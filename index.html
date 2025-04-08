@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Classroom Phone Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #controls {
+      margin-bottom: 1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    #seating-chart {
+      display: flex;
+      justify-content: center;
+      gap: 6rem;
+    }
+    .column {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .pod {
+      display: grid;
+      grid-template-columns: repeat(2, 80px);
+      grid-template-rows: repeat(2, 80px);
+      gap: 0.5rem;
+    }
+    .pod.three {
+      grid-template-columns: repeat(2, 80px);
+      grid-template-rows: 80px 80px;
+      gap: 0.5rem;
+    }
+    .desk {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: gray;
+      color: white;
+      font-weight: bold;
+      border-radius: 0.5rem;
+      cursor: pointer;
+    }
+    .green { background-color: green; }
+    .red { background-color: red; }
+    .gray { background-color: gray; }
+    .edit input {
+      width: 70px;
+    }
+    #timer-display {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="edit-names">Edit Names</button>
+    <button id="start-session">Start Session</button>
+    <button id="end-session">End Session</button>
+    <button id="upload-data">Upload to Google Sheets</button>
+    <select id="class-select">
+      <option value="block1">Block 1</option>
+      <option value="block2">Block 2</option>
+    </select>
+    <span id="timer-display">00:00</span>
+  </div>
+
+  <div id="seating-chart"></div>
+
+  <script>
+    const seatingChart = document.getElementById("seating-chart");
+    const editBtn = document.getElementById("edit-names");
+    const classSelect = document.getElementById("class-select");
+    const startSessionBtn = document.getElementById("start-session");
+    const endSessionBtn = document.getElementById("end-session");
+    const uploadBtn = document.getElementById("upload-data");
+    const timerDisplay = document.getElementById("timer-display");
+
+    let isEditing = false;
+    let currentClass = classSelect.value;
+    let sessionStartTime = null;
+    let sessionTimer = null;
+    let stateHistory = {};
+
+    const columnConfig = [
+      [4, 4],
+      [4, 4, 4],
+      [4, 4, 3]
+    ];
+
+    const buildChart = () => {
+      seatingChart.innerHTML = "";
+      let deskIndex = 0;
+      columnConfig.forEach((columnPods, colIndex) => {
+        const column = document.createElement("div");
+        column.className = "column";
+
+        columnPods.forEach(count => {
+          const pod = document.createElement("div");
+          pod.className = "pod";
+          if (count === 3) pod.classList.add("three");
+
+          for (let i = 0; i < count; i++) {
+            const desk = document.createElement("div");
+            desk.className = `desk gray`;
+            desk.dataset.index = deskIndex;
+            desk.dataset.status = "gray";
+
+            const name = getStudentName(currentClass, deskIndex);
+            desk.innerText = name || "";
+
+            desk.addEventListener("click", (e) => {
+              if (isEditing) return;
+              toggleDeskColor(desk);
+            });
+
+            pod.appendChild(desk);
+            deskIndex++;
+          }
+          column.appendChild(pod);
+        });
+        seatingChart.appendChild(column);
+      });
+    };
+
+    const toggleDeskColor = (desk) => {
+      const currentState = desk.dataset.status;
+      let newState;
+
+      if (currentState === "green") newState = "red";
+      else if (currentState === "red") newState = "gray";
+      else newState = "green";
+
+      desk.classList.remove("gray", "green", "red");
+      desk.classList.add(newState);
+      desk.dataset.status = newState;
+
+      logDeskStateChange(desk.dataset.index, newState);
+    };
+
+    const getStudentName = (className, index) => {
+      return localStorage.getItem(`${className}-student-${index}`);
+    };
+
+    const setStudentName = (className, index, name) => {
+      localStorage.setItem(`${className}-student-${index}`, name);
+    };
+
+    editBtn.addEventListener("click", () => {
+      isEditing = !isEditing;
+      editBtn.innerText = isEditing ? "Save Names" : "Edit Names";
+      const desks = document.querySelectorAll(".desk");
+      desks.forEach(desk => {
+        const index = desk.dataset.index;
+        if (isEditing) {
+          const input = document.createElement("input");
+          input.value = desk.innerText;
+          desk.innerText = "";
+          desk.appendChild(input);
+        } else {
+          const input = desk.querySelector("input");
+          const name = input.value;
+          setStudentName(currentClass, index, name);
+          desk.innerText = name;
+        }
+      });
+    });
+
+    classSelect.addEventListener("change", () => {
+      currentClass = classSelect.value;
+      buildChart();
+    });
+
+    const updateTimerDisplay = () => {
+      const now = new Date();
+      const diff = Math.floor((now - sessionStartTime) / 1000);
+      const minutes = String(Math.floor(diff / 60)).padStart(2, '0');
+      const seconds = String(diff % 60).padStart(2, '0');
+      timerDisplay.innerText = `${minutes}:${seconds}`;
+    };
+
+    startSessionBtn.addEventListener("click", () => {
+      if (!confirm("Are you sure you want to start a new session?")) return;
+      sessionStartTime = new Date();
+      stateHistory = {};
+
+      document.querySelectorAll(".desk").forEach(desk => {
+        const index = desk.dataset.index;
+        const state = desk.dataset.status;
+        stateHistory[index] = [{ state, timestamp: sessionStartTime.getTime() }];
+      });
+
+      sessionTimer = setInterval(updateTimerDisplay, 1000);
+    });
+
+    endSessionBtn.addEventListener("click", () => {
+      if (!confirm("Are you sure you want to end the session?")) return;
+      if (sessionTimer) clearInterval(sessionTimer);
+      timerDisplay.innerText = "00:00";
+
+      document.querySelectorAll(".desk").forEach(desk => {
+        desk.classList.remove("green", "red", "gray");
+        desk.classList.add("gray");
+        desk.dataset.status = "gray";
+      });
+    });
+
+    function calculateDurations() {
+      const now = new Date().getTime();
+      const results = [];
+
+      for (const index in stateHistory) {
+        const entries = stateHistory[index];
+        let name = getStudentName(currentClass, index) || `Student ${index}`;
+        let times = { green: 0, red: 0, gray: 0 };
+
+        for (let i = 0; i < entries.length; i++) {
+          const current = entries[i];
+          const next = entries[i + 1];
+          const endTime = next ? next.timestamp : now;
+          const duration = endTime - current.timestamp;
+          times[current.state] += duration;
+        }
+
+        const totalTime = times.green + times.red + times.gray;
+        const percentages = totalTime > 0 ? {
+          green: Math.round((times.green / totalTime) * 100),
+          red: Math.round((times.red / totalTime) * 100),
+          gray: Math.round((times.gray / totalTime) * 100),
+        } : { green: 0, red: 0, gray: 0 };
+
+        results.push({ index, name, times, totalTime, percentages });
+      }
+      return results;
+    }
+
+    uploadBtn.addEventListener("click", () => {
+      if (!confirm("Are you sure you want to upload this session to Google Sheets?")) return;
+      const sessionData = calculateDurations();
+
+      fetch("https://script.google.com/macros/s/AKfycby0iOxkgnOBkCRrq4AOqAeh93n6JSCspZjVm55twSvHQY9QC3Gl8F6ZPbraDopTowhtLg/exec", {
+        method: "POST",
+        body: JSON.stringify(sessionData),
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+      .then(response => response.text())
+      .then(data => {
+        alert("Upload successful!");
+        console.log(data);
+        stateHistory = {}; // reset after upload
+        sessionStartTime = null;
+        localStorage.setItem('savedState', null);
+      })
+      .catch(error => {
+        alert("Error uploading data.");
+        console.error(error);
+      });
+    });
+
+    const logDeskStateChange = (index, newState) => {
+      if (!sessionStartTime) return;
+      const now = new Date().getTime();
+      if (!stateHistory[index]) stateHistory[index] = [];
+      stateHistory[index].push({ state: newState, timestamp: now });
+    };
+
+    window.addEventListener("beforeunload", () => {
+      if (sessionStartTime) {
+        localStorage.setItem('savedState', JSON.stringify({
+          sessionStartTime: sessionStartTime.getTime(),
+          stateHistory: stateHistory
+        }));
+      }
+    });
+
+    const restoreState = () => {
+      const saved = localStorage.getItem('savedState');
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      sessionStartTime = new Date(parsed.sessionStartTime);
+      stateHistory = parsed.stateHistory;
+      sessionTimer = setInterval(updateTimerDisplay, 1000);
+    };
+
+ buildChart();
+localStorage.removeItem('savedState');
+
+  </script>
+</body>
+</html>
