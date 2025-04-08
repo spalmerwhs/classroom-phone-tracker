@@ -245,7 +245,7 @@
       if (!confirm("Are you sure you want to upload this session to Google Sheets?")) return;
       const sessionData = calculateDurations();
 
-      fetch("https://script.google.com/macros/s/AKfycbyY4JFg6NpMrKJyf9eNaqgYrS_YBrlFBQG3SUdYmO31o94cHuTeOeakFqZ5SRd8VS-y0Q/exec", {
+      fetch("https://script.google.com/macros/s/AKfycbw60ruSh1CsmhjGkvIy9-KwBXBdYK0_WoMRYe0OjoiPkfG_PKJXZ6yrVZrGVGtMIHFe5Q/exec", {
         method: "POST",
         body: JSON.stringify(sessionData),
         headers: {
